@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Crime Analytics Dashboard</title>
+
+  <!-- Bootstrap 5 for layout -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Chart.js for all charts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- Leaflet map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    body {
+      background: radial-gradient(circle at top, #1f2937 0, #020617 45%, #000 100%);
+      color: #e5e7eb;
+      font-family: "Montserrat", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      transition: background 0.3s ease, color 0.3s ease;
+    }
+    .card {
+      background: rgba(15, 23, 42, 0.95);
+      border-radius: 18px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(16px);
+      transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+    .card-header {
+      border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+    }
+    .pill-label {
+      font-size: 0.85rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: #a5b4fc;
+    }
+    .neon {
+      color: #a855f7;
+    }
+    .neon-soft {
+      color: #22d3ee;
+    }
+    .stat-number {
+      font-size: 2.4rem;
+      font-weight: 700;
+    }
+    .chip {
+      border-radius: 999px;
+      padding: .3rem .75rem;
+      font-size: .8rem;
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      color: #e5e7eb;
+    }
+    .chip span {
+      color: #a5b4fc;
+      font-weight: 600;
+    }
+    .footer-bar {
+      font-size: 0.85rem;
+      color: #9ca3af;
+    }
+    .footer-bar span {
+      color: #e5e7eb;
+      font-weight: 600;
+    }
+    .input-dark {
+      background-color: #020617;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      color: #e5e7eb;
+      padding-inline: 1rem;
+    }
+    .input-dark::placeholder {
+      color: #6b7280;
+    }
+    .btn-neon {
+      background: linear-gradient(90deg, #22d3ee, #a855f7);
+      border: none;
+      color: #020617;
+      font-weight: 600;
+      border-radius: 999px;
+      padding-inline: 1.4rem;
+      box-shadow: 0 10px 25px rgba(168, 85, 247, 0.4);
+    }
+    .btn-neon:hover {
+      filter: brightness(1.08);
+      color: #020617;
+    }
+    #map {
+      height: 260px;
+      border-radius: 14px;
+      overflow: hidden;
+    }
+
+    /* light mode toggle */
+    body.light-mode {
+      background: #f3f4f6;
+      color: #111827;
+    }
+    body.light-mode .card {
+      background: #ffffff;
+      border-color: #e5e7eb;
+      box-shadow: 0 10px 25px rgba(15, 23, 42, 0.15);
+    }
+    body.light-mode .pill-label {
+      color: #4b5563;
+    }
+    body.light-mode .chip {
+      border-color: #d1d5db;
+      color: #111827;
+    }
+    body.light-mode .footer-bar {
+      color: #4b5563;
+    }
+    body.light-mode .footer-bar span {
+      color: #111827;
+    }
+  </style>
+</head>
+<body>
+  <div class="container-fluid py-4 px-4 px-md-5">
+    <!-- Top header strip -->
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-4">
+      <div>
+        <div class="pill-label mb-2">Final Year Project</div>
+        <h1 class="h3 mb-1">
+          Crime Data Analysis &amp; Prediction
+          <span class="neon">| UK Police (Open Data)</span>
+        </h1>
+        <p class="text-secondary mb-0">
+          Interactive dashboard to explore crime trends, hotspots and category patterns using
+          real UK police data (2022–2024).
+        </p>
+      </div>
+      <div class="mt-3 mt-md-0 d-flex flex-column align-items-md-end gap-2">
+        <div class="d-flex gap-2">
+          <div class="chip"><span>Dataset:</span> Street-level crimes</div>
+          <div class="chip"><span>Tech:</span> Python, Flask, SQL, ML</div>
+        </div>
+        <button id="themeToggle" class="btn btn-sm btn-outline-light mt-1">
+          🌙 Dark / Light
+        </button>
+      </div>
+    </div>
+
+    <!-- Filter row -->
+    <div class="card mb-4">
+      <div class="card-body">
+        <div class="row g-3 align-items-end">
+          <div class="col-md-2">
+            <label class="form-label text-secondary small mb-1">Year (YYYY)</label>
+            <input id="yearInput" class="form-control input-dark" placeholder="e.g. 2022">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label text-secondary small mb-1">Month (01–12)</label>
+            <input id="monthInput" class="form-control input-dark" placeholder="e.g. 09">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label text-secondary small mb-1">Place / Force (city or area)</label>
+            <input id="placeInput" class="form-control input-dark" placeholder="e.g. Cambridge, Manchester">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label text-secondary small mb-1">Crime Type (optional)</label>
+            <input id="typeInput" class="form-control input-dark" placeholder="e.g. burglary, robbery, violence">
+          </div>
+          <div class="col-md-2 d-flex flex-column gap-2">
+            <button id="applyBtn" class="btn btn-neon w-100">
+              Apply Filters
+            </button>
+            <button id="exportBtn" class="btn btn-outline-secondary w-100 btn-sm">
+              ⬇ Export CSV
+            </button>
+          </div>
+        </div>
+        <div class="mt-2 text-secondary small">
+          Tip: leave any field empty to ignore that filter. For example, only set <strong>place = Cambridge</strong>
+          to compare all years for that city.
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats + main trend -->
+    <div class="row g-4 mb-4">
+      <div class="col-md-3">
+        <div class="card h-100">
+          <div class="card-body">
+            <div class="pill-label mb-3">Total Crimes (after filters)</div>
+            <div class="stat-number neon-soft" id="totalCrimes">—</div>
+            <p class="text-secondary small mb-3">
+              Count of street-level crimes matching the selected year / month / place / crime type.
+            </p>
+            <ul class="text-secondary small mb-0">
+              <li>Backed directly by your MySQL dataset.</li>
+              <li>Counts reflect the records loaded into the database.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-9">
+        <div class="card h-100">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span class="pill-label">Trend</span>
+            <span class="text-secondary small">
+              Crimes per month (<span id="trendLabel">all data</span>)
+            </span>
+          </div>
+          <div class="card-body">
+            <canvas id="trendChart" height="90"></canvas>
+            <div class="text-secondary small mt-2" id="trendEmpty" style="display:none;">
+              No data found for this filter combination. Try relaxing one of the filters.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Crime types + forecast -->
+    <div class="row g-4 mb-4">
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span class="pill-label">Crime Types</span>
+            <span class="text-secondary small">Top categories (by count)</span>
+          </div>
+          <div class="card-body">
+            <canvas id="typeChart" height="130"></canvas>
+            <div class="text-secondary small mt-2" id="typeEmpty" style="display:none;">
+              No crime categories found for this filter combination.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span class="pill-label">Forecast (experimental)</span>
+            <span class="text-secondary small">Saved overall forecast (unfiltered)</span>
+          </div>
+          <div class="card-body">
+            <canvas id="forecastChart" height="130"></canvas>
+            <div class="text-secondary small mt-2" id="forecastEmpty" style="display:none;">
+              Not enough historical data or no trained model found.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hotspot map + explainer -->
+    <div class="row g-4 mb-4">
+      <div class="col-md-7">
+        <div class="card h-100">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span class="pill-label">Hotspot Map</span>
+            <span class="text-secondary small">Marker size ≈ crime volume at location</span>
+          </div>
+          <div class="card-body">
+            <div id="map"></div>
+            <div class="text-secondary small mt-2" id="mapEmpty" style="display:none;">
+              No hotspot locations for this filter combination.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-5">
+        <div class="card h-100">
+          <div class="card-header">
+            <span class="pill-label">About this dashboard</span>
+          </div>
+          <div class="card-body">
+            <ul class="text-secondary small mb-3">
+              <li><strong>Trend chart:</strong> use this for seasonality and long-term patterns.</li>
+              <li><strong>Types chart:</strong> shows which crime categories dominate a place or year.</li>
+              <li><strong>Forecast chart:</strong> links your project to machine learning and future risk.</li>
+              <li><strong>Hotspot map:</strong> connects spatial clustering with policing and safety decisions.</li>
+            </ul>
+            <p class="text-secondary small mb-1">
+              Together, these views demonstrate:
+            </p>
+            <ul class="text-secondary small">
+              <li>End-to-end flow: open data → MySQL → analytics → interactive visuals.</li>
+              <li>Ability to slice data by place, time and category in real time.</li>
+              <li>A foundation where more advanced ML models can plug in later.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer info bar -->
+    <div class="footer-bar py-2 text-center">
+      <span>Data Source:</span> UK Police Open Data (2022–2024) ·
+      <span>Tech stack:</span> Python, Flask, SQLAlchemy, MySQL, Chart.js, Leaflet, Prophet ·
+      <span>Focus:</span> Trend analysis, category breakdown, spatial hotspots &amp; forecasting
+    </div>
+  </div>
+
+  <script>
+    // keep chart + map references global so we can destroy / update them
+    let trendChart = null;
+    let typeChart = null;
+    let forecastChart = null;
+    let map = null;
+    let hotspotLayer = null;
+
+    // we also cache the last monthly series so Prophet forecast can overlay nicely
+    let lastSummarySeries = { labels: [], counts: [] };
+
+    // grab filter values from the header
+    function getFilters() {
+      return {
+        year:  document.getElementById("yearInput").value.trim(),
+        month: document.getElementById("monthInput").value.trim(),
+        place: document.getElementById("placeInput").value.trim(),
+        type:  document.getElementById("typeInput").value.trim(),
+      };
+    }
+
+    // helper to turn {year: 2022, place: "Cambridge"} into ?year=2022&place=Cambridge
+    function buildQuery(params) {
+      const sp = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => {
+        if (v) sp.append(k, v);
+      });
+      return sp.toString();
+    }
+
+    // main summary endpoint: total, monthly trend, crime types
+    async function loadSummary() {
+      const filters = getFilters();
+      const qs = buildQuery(filters);
+
+      const resp = await fetch("/api/summary?" + qs);
+      if (!resp.ok) {
+        console.error("Failed to load /api/summary", resp.status);
+        return;
+      }
+      const data = await resp.json();
+
+      // total KPI
+      document.getElementById("totalCrimes").textContent =
+        data.total_crimes?.toLocaleString() ?? "0";
+
+      // build a human-readable label for the trend subtitle
+      const bits = [];
+      if (filters.year)  bits.push(filters.year);
+      if (filters.month) bits.push("M" + filters.month);
+      if (filters.place) bits.push(filters.place);
+      if (filters.type)  bits.push(filters.type);
+      document.getElementById("trendLabel").textContent =
+        bits.length ? bits.join(" · ") : "all data";
+
+      // monthly trend
+      const labels = data.by_month.labels || [];
+      const counts = data.by_month.counts || [];
+      lastSummarySeries = { labels, counts }; // cache for the Prophet forecast
+
+      const trendEmpty = document.getElementById("trendEmpty");
+      const ctxTrend = document.getElementById("trendChart").getContext("2d");
+      if (trendChart) trendChart.destroy();
+
+      if (!labels.length) {
+        trendEmpty.style.display = "block";
+      } else {
+        trendEmpty.style.display = "none";
+        trendChart = new Chart(ctxTrend, {
+          type: "line",
+          data: {
+            labels,
+            datasets: [{
+              label: "Crimes per month",
+              data: counts,
+              borderWidth: 2.5,
+              borderColor: "rgba(56,189,248,0.95)",   // cyan
+              backgroundColor: "rgba(56,189,248,0.25)",
+              fill: true,
+              tension: 0.2,
+              pointRadius: 2.8,
+              pointHoverRadius: 4
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { ticks: { color: "#9ca3af" }, grid: { color: "rgba(31,41,55,0.7)" } },
+              y: { ticks: { color: "#9ca3af" }, grid: { color: "rgba(31,41,55,0.7)" } }
+            }
+          }
+        });
+      }
+
+      // crime types stacked bar
+      const tLabels = data.by_type.labels || [];
+      const tCounts = data.by_type.counts || [];
+      const typeEmpty = document.getElementById("typeEmpty");
+      const ctxType = document.getElementById("typeChart").getContext("2d");
+      if (typeChart) typeChart.destroy();
+
+      if (!tLabels.length) {
+        typeEmpty.style.display = "block";
+      } else {
+        typeEmpty.style.display = "none";
+        typeChart = new Chart(ctxType, {
+          type: "bar",
+          data: {
+            labels: tLabels,
+            datasets: [{
+              label: "Crimes",
+              data: tCounts,
+              borderWidth: 1,
+              backgroundColor: "rgba(168,85,247,0.85)"  // purple
+            }]
+          },
+          options: {
+            indexAxis: "y",
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { ticks: { color: "#9ca3af" }, grid: { color: "rgba(31,41,55,0.7)" } },
+              y: { ticks: { color: "#e5e7eb" }, grid: { display: false } }
+            }
+          }
+        });
+      }
+    }
+
+    // Prophet forecast visual – this talks to /api/forecast (predictions.json)
+    async function loadForecast() {
+      const forecastEmpty = document.getElementById("forecastEmpty");
+      const ctx = document.getElementById("forecastChart").getContext("2d");
+      if (forecastChart) forecastChart.destroy();
+
+      // if there is no historical series yet, we can't really overlay a forecast
+      if (!lastSummarySeries.labels.length) {
+        forecastEmpty.style.display = "block";
+        return;
+      }
+
+      // horizon=12 just means "give me 12 future months"
+      const resp = await fetch("/api/forecast?horizon=12");
+      if (!resp.ok) {
+        console.error("Failed to load /api/forecast", resp.status);
+        forecastEmpty.style.display = "block";
+        return;
+      }
+      const data = await resp.json();
+      const pts = data.points || [];
+
+      if (!pts.length) {
+        forecastEmpty.style.display = "block";
+        return;
+      }
+      forecastEmpty.style.display = "none";
+
+      // split out what we care about from Prophet
+      const futureLabels = pts.map(p => p.date);
+      const futureValues = pts.map(p => p.value);
+
+      const histLabels = lastSummarySeries.labels;
+      const histCounts = lastSummarySeries.counts;
+
+      // combined x-axis: history first, then future months from Prophet
+      const allLabels = [...histLabels, ...futureLabels];
+
+      const historySeries = [
+        ...histCounts,
+        ...Array(futureLabels.length).fill(null)   // we stop history where Prophet starts
+      ];
+
+      const forecastSeries = [
+        ...Array(histLabels.length).fill(null),
+        ...futureValues
+      ];
+
+      forecastChart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: allLabels,
+          datasets: [
+            {
+              label: "History (observed)",
+              data: historySeries,
+              borderColor: "rgba(56,189,248,0.9)",         // cyan
+              backgroundColor: "rgba(56,189,248,0.15)",
+              borderWidth: 2,
+              tension: 0.25,
+              pointRadius: 0
+            },
+            {
+              label: "Forecast (Prophet)",
+              data: forecastSeries,
+              borderColor: "rgba(244,63,94,0.95)",          // neon pink
+              backgroundColor: "rgba(244,63,94,0.18)",
+              borderWidth: 2,
+              borderDash: [6, 4],
+              tension: 0.25,
+              pointRadius: 0,
+              fill: true                                    // gives a soft glow under the line
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: {
+              labels: { color: "#e5e7eb", font: { size: 11 } }
+            },
+            tooltip: {
+              callbacks: {
+                // nice little tooltip: label + value rounded
+                label: (ctx) => `${ctx.dataset.label}: ${Math.round(ctx.parsed.y)} crimes`
+              }
+            }
+          },
+          scales: {
+            x: { ticks: { color: "#9ca3af" }, grid: { color: "rgba(31,41,55,0.7)" } },
+            y: { ticks: { color: "#9ca3af" }, grid: { color: "rgba(31,41,55,0.7)" } }
+          }
+        }
+      });
+    }
+
+    // hotspot map (Leaflet)
+    async function loadHotspots() {
+      const filters = getFilters();
+      const qs = buildQuery(filters);
+      const resp = await fetch("/api/hotspots?" + qs);
+      if (!resp.ok) {
+        console.error("Failed to load /api/hotspots", resp.status);
+        return;
+      }
+      const data = await resp.json();
+      const mapEmpty = document.getElementById("mapEmpty");
+
+      if (!map) {
+        // roughly centre on the UK
+        map = L.map("map").setView([52.0, -1.5], 6);
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          maxZoom: 18,
+          attribution: "&copy; OpenStreetMap"
+        }).addTo(map);
+        hotspotLayer = L.layerGroup().addTo(map);
+      }
+
+      hotspotLayer.clearLayers();
+
+      if (!data.length) {
+        mapEmpty.style.display = "block";
+        return;
+      }
+      mapEmpty.style.display = "none";
+
+      const latlngs = [];
+      data.forEach(h => {
+        const radius = 4 + Math.log(h.count + 1) * 4; // small log-scale so big areas stand out
+        const ll = [h.lat, h.lon];
+        latlngs.push(ll);
+        L.circleMarker(ll, {
+          radius,
+          color: "#f97316",
+          weight: 1,
+          fillColor: "#ef4444",
+          fillOpacity: 0.6
+        })
+          .bindPopup(`<strong>${h.city || ""}</strong><br>${h.area || ""}<br>Crimes: ${h.count}`)
+          .addTo(hotspotLayer);
+      });
+
+      if (latlngs.length) {
+        map.fitBounds(latlngs, { padding: [20, 20] });
+      }
+    }
+
+    // quick helper to refresh everything when filters change
+    function applyFilters() {
+      loadSummary().then(() => {
+        // wait for summary first so the forecast can piggy-back on monthly series
+        loadForecast();
+      });
+      loadHotspots();
+    }
+
+    // hook up buttons
+    document.getElementById("applyBtn").addEventListener("click", applyFilters);
+
+    document.getElementById("exportBtn").addEventListener("click", () => {
+      const filters = getFilters();
+      const qs = buildQuery(filters);
+      const url = "/export/csv?" + qs;
+      window.open(url, "_blank");
+    });
+
+    // simple dark/light toggle – just flips a CSS class
+    document.getElementById("themeToggle").addEventListener("click", () => {
+      document.body.classList.toggle("light-mode");
+    });
+
+    // initial load
+    window.addEventListener("DOMContentLoaded", () => {
+      applyFilters();
+    });
+  </script>
+</body>
+</html>
+
